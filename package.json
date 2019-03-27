@@ -1,0 +1,58 @@
+{
+  "name": "@gdjiami/jsonrpc-electron",
+  "version": "0.1.0",
+  "description": "use jsonrpc to communicate main <-> renderer or renderer <-> renderer in electron",
+  "main": "main.js",
+  "typings": "lib/index.d.ts",
+  "publishConfig": {
+    "registry": "https://registry.npmjs.org",
+    "access": "public"
+  },
+  "scripts": {
+    "build:clean": "rm -rf lib",
+    "build:commonjs": "tsc -b tsconfig-build.cm.json",
+    "build": "npm run build:clean && tsc -b tsconfig-build.json",
+    "test": "jest --coverage",
+    "test:watch": "jest --watch"
+  },
+  "files": [
+    "lib"
+  ],
+  "husky": {
+    "hooks": {
+      "pre-commit": "pretty-quick --staged"
+    }
+  },
+  "jest": {
+    "testMatch": [
+      "**/__tests__/**/!(helper)*.ts?(x)"
+    ],
+    "roots": [
+      "src"
+    ]
+  },
+  "keywords": [
+    "jsonrpc",
+    "electron",
+    "ipc"
+  ],
+  "author": "ivan",
+  "license": "MIT",
+  "peerDependencies": {
+    "tslib": ">=1.9.3"
+  },
+  "devDependencies": {
+    "@babel/core": "^7.3.4",
+    "@babel/preset-env": "^7.3.4",
+    "@babel/preset-typescript": "^7.3.3",
+    "@types/jest": "^24.0.11",
+    "babel-jest": "^24.4.0",
+    "husky": "^1.2.1",
+    "jest": "^24.4.0",
+    "prettier": "^1.15.3",
+    "pretty-quick": "^1.8.0",
+    "tslib": "^1.9.3",
+    "typescript": "^3.3.3333"
+  },
+  "dependencies": {}
+}

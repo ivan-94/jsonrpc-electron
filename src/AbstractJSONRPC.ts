@@ -1,0 +1,413 @@
+import {
+  RPC_SEND_CHANNEL,
+  RPC_RECEIVE_CHANNEL,
+  DEFAULT_TIMEOUT,
+  MAIN_TARGET,
+} from './constants'
+import {
+  ResponderCallback,
+  HandlerCallback,
+  EventCallback,
+  JSONRPCErrorCode,
+  Sendable,
+  JSONRPCResponse,
+  JSONRPCRequest,
+  JSONRPCResponseError,
+  JSONRPCResponseSuccess,
+  JSONRPCTarget,
+} from './type'
+import { BoundJSONRPC } from './BoundJSONRPC'
+
+/**
+ * a JSON-RPC client for communicate with renderers
+ */
+export abstract class AbstractJSONRPC {
+  /**
+   * 表示main线程，可以用于emit，callHandler
+   */
+  public static Main = MAIN_TARGET
+  /**
+   * JSONRPC 错误对象
+   */
+  public static Error = class extends Error {
+    public constructor(
+      public code: number,
+      public message: string,
+      public data?: any,
+    ) {
+      super(message)
+      Object.setPrototypeOf(this, AbstractJSONRPC.Error)
+    }
+  }
+
+  private uid = 0
+  protected responder: {
+    [id: string]: {
+      callback: ResponderCallback
+    }
+  } = {}
+  protected handlers: {
+    [method: string]: Array<{
+      target?: JSONRPCTarget
+      callback: HandlerCallback
+    }>
+  } = {}
+  protected listeners: {
+    [method: string]: Array<{
+      target?: JSONRPCTarget
+      callback: EventCallback
+    }>
+  } = {}
+
+  /**
+   * 绑定target
+   * @param target
+   */
+  public bind(target: JSONRPCTarget) {
+    return new BoundJSONRPC(this, target)
+  }
+
+  /**
+   * 向指定renderer发送事件
+   * @param target
+   * @param method
+   * @param params
+   */
+  public emit<T>(target: JSONRPCTarget, method: string, params?: T) {
+    this.send(target, method, params)
+  }
+
+  /**
+   * 监听事件
+   * @param method
+   * @param callback
+   * @param target 可选，支持绑定target
+   * @returns 返回一个disposer，用于取消订阅
+   */
+  public on<T>(
+    method: string,
+    callback: EventCallback<T>,
+    target?: JSONRPCTarget,
+  ) {
+    if (this.listeners[method]) {
+      this.listeners[method].push({ callback, target })
+    } else {
+      this.listeners[method] = [{ callback, target }]
+    }
+
+    return () => {
+      this.off(method, callback, target)
+    }
+  }
+
+  /**
+   * 取消事件监听
+   * @param method
+   * @param callback
+   * @param target 可选，支持绑定target
+   */
+  public off(method: string, callback: EventCallback, target?: JSONRPCTarget) {
+    if (this.listeners[method]) {
+      const idx = this.listeners[method].findIndex(
+        i => i.callback === callback && this.isTargetEqual(i.target, target),
+      )
+      if (idx !== -1) {
+        this.listeners[method].splice(idx, 1)
+      }
+    }
+  }
+
+  /**
+   * 调用执行renderer的方法
+   * @param target
+   * @param method
+   * @param params
+   */
+  public callHandler<R, T = {}>(
+    target: JSONRPCTarget,
+    method: string,
+    params?: T,
+  ): Promise<R> {
+    return new Promise((res, rej) => {
+      this.send(target, method, params, (result, error) => {
+        if (error != null) {
+          rej(error)
+        } else {
+          res(result as R)
+        }
+      })
+    })
+  }
+
+  /**
+   * 注册方法，供renderer调用
+   * @param method
+   * @param handler
+   * @param target 可选，只接受该target的请求
+   */
+  public registerHandler<R, T = {}>(
+    method: string,
+    handler: HandlerCallback<R, T>,
+    target?: JSONRPCTarget,
+  ) {
+    if (
+      target == null &&
+      this.handlers[method] &&
+      this.handlers[method].some(i => i.target == null)
+    ) {
+      throw new Error(`[JSONRPC] registerHandler ${method} 已存在`)
+    }
+
+    if (
+      target &&
+      this.handlers[method] &&
+      this.handlers[method].some(i => this.isTargetEqual(target, i.target))
+    ) {
+      throw new Error(
+        `[JSONRPC] registerHandler(${JSON.stringify(target)}) ${method} 已存在`,
+      )
+    }
+
+    if (this.handlers[method]) {
+      this.handlers[method].push({ callback: handler, target })
+    } else {
+      this.handlers[method] = [
+        {
+          callback: handler,
+        },
+      ]
+    }
+
+    return () => {
+      this.unregisterHandler(method, target)
+    }
+  }
+
+  /**
+   * 取消注册
+   * @param method
+   */
+  public unregisterHandler(method: string, target?: JSONRPCTarget) {
+    if (this.handlers[method]) {
+      const idx = this.handlers[method].findIndex(i =>
+        this.isTargetEqual(i.target, target),
+      )
+
+      if (idx !== -1) {
+        this.handlers[method].splice(idx, 1)
+      }
+    }
+  }
+
+  protected abstract getSendable(target: JSONRPCTarget): Sendable
+
+  /**
+   * 初始化
+   */
+
+  /**
+   * 低层发送方法
+   * @param target 可以是webContents id 或者BrowserWindow和WebContent
+   * @param method
+   * @param params
+   * @param callback
+   */
+  protected send<R, T>(
+    target: JSONRPCTarget,
+    method: string,
+    params?: T,
+    callback?: ResponderCallback<R>,
+  ) {
+    const isEvent = callback == null
+    const id = isEvent ? undefined : this.getId()
+
+    const payload = {
+      jsonrpc: '2.0',
+      method,
+      id,
+      params: params || {},
+    }
+
+    const sender = (sendable: Sendable) => {
+      if (!isEvent) {
+        // 需要监听renderer响应
+        let resolved = false
+        // 超时机制
+        const timer = setTimeout(() => {
+          if (resolved) {
+            return
+          }
+          resolved = true
+          callback!(
+            undefined,
+            new AbstractJSONRPC.Error(
+              JSONRPCErrorCode.Timeout,
+              `${method} 调用超时`,
+            ),
+          )
+
+          // tslint:disable-next-line:no-dynamic-delete
+          delete this.responder[id!]
+        }, DEFAULT_TIMEOUT)
+
+        this.responder[id!] = {
+          callback: (result, error) => {
+            if (resolved) {
+              return
+            }
+            resolved = true
+            clearTimeout(timer)
+            callback!(result, error)
+          },
+        }
+      }
+
+      sendable.send(RPC_SEND_CHANNEL, payload)
+    }
+
+    sender(this.getSendable(target))
+  }
+
+  /**
+   * 判断是否是同一个target
+   * @param a
+   * @param b
+   */
+  protected isTargetEqual(a?: JSONRPCTarget, b?: JSONRPCTarget) {
+    return a == null && b == null
+      ? true
+      : a == null || b == null
+      ? false
+      : this.getSendable(a).id === this.getSendable(b).id
+  }
+
+  /**
+   * 判断sender是否匹配target
+   * @param a
+   * @param target
+   */
+  protected isSenderMatchTarget(a: Sendable, target?: JSONRPCTarget) {
+    return target == null ? true : this.getSendable(target).id === a.id
+  }
+
+  /**
+   * 处理JSONRPC响应
+   * @param res
+   */
+  protected handleRPCResponse(res: JSONRPCResponse<any>) {
+    const { id } = res
+    const responder = this.responder[id]
+    if (responder == null) {
+      console.warn(`[JSONRPC] responder for ${id} not found`)
+      return
+    }
+
+    if ('error' in res) {
+      // 调用异常
+      responder.callback(
+        undefined,
+        new AbstractJSONRPC.Error(
+          res.error.code,
+          res.error.message,
+          res.error.data,
+        ),
+      )
+    } else {
+      responder.callback(res.result)
+    }
+
+    // tslint:disable-next-line:no-dynamic-delete
+    delete this.responder[id]
+  }
+
+  protected getHandlerFor(method: string, sender: Sendable) {
+    if (this.handlers[method] == null) {
+      return undefined
+    }
+
+    let handler:
+      | {
+          target?: JSONRPCTarget
+          callback: HandlerCallback
+        }
+      | undefined
+
+    for (const item of this.handlers[method]) {
+      if (item.target == null) {
+        handler = item
+      } else if (this.isSenderMatchTarget(sender, item.target)) {
+        handler = item
+        break
+      }
+    }
+
+    return handler
+  }
+
+  /**
+   * 处理JSONRPC响应
+   * @param sender
+   * @param req
+   */
+  protected handleRPCRequest(sender: Sendable, req: JSONRPCRequest<any>) {
+    const { params, id, method } = req
+    const isEvent = id == null
+    if (isEvent) {
+      // 事件调用
+      if (this.listeners[method]) {
+        this.listeners[method].slice(0).forEach(i => {
+          if (this.isSenderMatchTarget(sender, i.target)) {
+            i.callback(params, sender.id)
+          }
+        })
+      }
+    } else {
+      // 方法请求
+      const handler = this.getHandlerFor(method, sender)
+      if (handler == null) {
+        const res: JSONRPCResponseError = {
+          id,
+          jsonrpc: '2.0',
+          error: {
+            code: JSONRPCErrorCode.NotFound,
+            message: `method ${method} not found`,
+          },
+        }
+        sender.send(RPC_RECEIVE_CHANNEL, res)
+      } else {
+        handler
+          .callback(params, sender.id)
+          .then(result => {
+            const res: JSONRPCResponseSuccess<any> = {
+              id,
+              jsonrpc: '2.0',
+              result,
+            }
+            sender.send(RPC_RECEIVE_CHANNEL, res)
+          })
+          .catch(err => {
+            const res: JSONRPCResponseError = {
+              id,
+              jsonrpc: '2.0',
+              error:
+                err instanceof AbstractJSONRPC.Error
+                  ? { code: err.code, message: err.message, data: err.data }
+                  : {
+                      code: JSONRPCErrorCode.UnKnown,
+                      message: err.message || err,
+                    },
+            }
+            sender.send(RPC_RECEIVE_CHANNEL, res)
+          })
+      }
+    }
+  }
+
+  /**
+   * 获取唯一的id
+   */
+  private getId() {
+    return `${(this.uid =
+      (this.uid + 1) % Number.MAX_SAFE_INTEGER)}${Date.now()}`
+  }
+}
