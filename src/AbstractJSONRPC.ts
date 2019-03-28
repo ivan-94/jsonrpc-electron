@@ -18,6 +18,12 @@ import {
 } from './type'
 import { BoundJSONRPC } from './BoundJSONRPC'
 
+export class JSONRPCError implements Error {
+  public stack = new Error().stack
+  public name = 'JSONRPCError'
+  constructor(public code: number, public message: string, public data?: any) {}
+}
+
 /**
  * a JSON-RPC client for communicate with renderers
  */
@@ -29,16 +35,7 @@ export abstract class AbstractJSONRPC {
   /**
    * JSONRPC 错误对象
    */
-  public static Error = class extends Error {
-    public constructor(
-      public code: number,
-      public message: string,
-      public data?: any,
-    ) {
-      super(message)
-      Object.setPrototypeOf(this, AbstractJSONRPC.Error)
-    }
-  }
+  public static Error = JSONRPCError
 
   private uid = 0
   protected responder: {
@@ -96,7 +93,7 @@ export abstract class AbstractJSONRPC {
     }
 
     return () => {
-      this.off(method, callback, target)
+      return this.off(method, callback, target)
     }
   }
 
@@ -113,8 +110,10 @@ export abstract class AbstractJSONRPC {
       )
       if (idx !== -1) {
         this.listeners[method].splice(idx, 1)
+        return true
       }
     }
+    return false
   }
 
   /**
@@ -155,7 +154,7 @@ export abstract class AbstractJSONRPC {
       this.handlers[method] &&
       this.handlers[method].some(i => i.target == null)
     ) {
-      throw new Error(`[JSONRPC] registerHandler ${method} 已存在`)
+      throw new Error(`[JSONRPC] registerHandler global ${method} 已存在`)
     }
 
     if (
@@ -173,13 +172,14 @@ export abstract class AbstractJSONRPC {
     } else {
       this.handlers[method] = [
         {
+          target,
           callback: handler,
         },
       ]
     }
 
     return () => {
-      this.unregisterHandler(method, target)
+      return this.unregisterHandler(method, target)
     }
   }
 
@@ -195,8 +195,11 @@ export abstract class AbstractJSONRPC {
 
       if (idx !== -1) {
         this.handlers[method].splice(idx, 1)
+        return true
       }
     }
+
+    return false
   }
 
   protected abstract getSendable(target: JSONRPCTarget): Sendable
