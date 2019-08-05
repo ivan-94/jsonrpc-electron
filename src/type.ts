@@ -63,6 +63,7 @@ export enum JSONRPCErrorCode {
   Timeout,
   Protocol,
   NotFound,
+  TargetReleased,
   UnKnown,
 }
 

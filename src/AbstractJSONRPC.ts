@@ -38,17 +38,29 @@ export abstract class AbstractJSONRPC {
   public static Error = JSONRPCError
 
   private uid = 0
+
+  /**
+   * 用于接收对端的回调
+   */
   protected responder: {
     [id: string]: {
       callback: ResponderCallback
     }
   } = {}
+
+  /**
+   * 当前进程已注册的方法
+   */
   protected handlers: {
     [method: string]: Array<{
       target?: JSONRPCTarget
       callback: HandlerCallback
     }>
   } = {}
+
+  /**
+   * 当前进程已注册的事件监听器
+   */
   protected listeners: {
     [method: string]: Array<{
       target?: JSONRPCTarget
@@ -202,14 +214,14 @@ export abstract class AbstractJSONRPC {
     return false
   }
 
-  protected abstract getSendable(target: JSONRPCTarget): Sendable
-
   /**
-   * 初始化
+   * 获取可发送对象, 由子类实现
+   * @param target
    */
+  protected abstract getSendable(target: JSONRPCTarget): Sendable | undefined
 
   /**
-   * 低层发送方法
+   * 底层发送方法
    * @param target 可以是webContents id 或者BrowserWindow和WebContent
    * @param method
    * @param params
@@ -231,15 +243,37 @@ export abstract class AbstractJSONRPC {
       params: params || {},
     }
 
-    const sender = (sendable: Sendable) => {
+    const sender = (sendable: Sendable | undefined) => {
+      if (sendable == null) {
+        if (process.env.NODE_ENV === 'development') {
+          console.warn(
+            `[JSONRPC] can't send message to released target: `,
+            target,
+          )
+        }
+
+        if (!isEvent) {
+          callback!(
+            undefined,
+            new AbstractJSONRPC.Error(
+              JSONRPCErrorCode.TargetReleased,
+              `can't send message to released target: ${target}`,
+            ),
+          )
+        }
+        return false
+      }
+
       if (!isEvent) {
         // 需要监听renderer响应
         let resolved = false
+
         // 超时机制
         const timer = setTimeout(() => {
           if (resolved) {
             return
           }
+
           resolved = true
           callback!(
             undefined,
@@ -266,9 +300,10 @@ export abstract class AbstractJSONRPC {
       }
 
       sendable.send(RPC_SEND_CHANNEL, payload)
+      return true
     }
 
-    sender(this.getSendable(target))
+    return sender(this.getSendable(target))
   }
 
   /**
@@ -277,11 +312,22 @@ export abstract class AbstractJSONRPC {
    * @param b
    */
   protected isTargetEqual(a?: JSONRPCTarget, b?: JSONRPCTarget) {
-    return a == null && b == null
-      ? true
-      : a == null || b == null
-      ? false
-      : this.getSendable(a).id === this.getSendable(b).id
+    if (a == null && b == null) {
+      return true
+    }
+
+    if ((a == null && b != null) || (b == null && a != null)) {
+      return false
+    }
+
+    const sendableA = this.getSendable(a!)
+    const sendableB = this.getSendable(b!)
+
+    if (sendableA && sendableB && sendableA.id === sendableB.id) {
+      return true
+    }
+
+    return false
   }
 
   /**
@@ -290,11 +336,14 @@ export abstract class AbstractJSONRPC {
    * @param target
    */
   protected isSenderMatchTarget(a: Sendable, target?: JSONRPCTarget) {
-    return target == null ? true : this.getSendable(target).id === a.id
+    let t: Sendable | undefined
+    return target == null
+      ? true
+      : (t = this.getSendable(target)) && t.id === a.id
   }
 
   /**
-   * 处理JSONRPC响应
+   * 处理JSONRPC回调响应
    * @param res
    */
   protected handleRPCResponse(res: JSONRPCResponse<any>) {

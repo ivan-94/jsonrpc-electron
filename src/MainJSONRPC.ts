@@ -49,6 +49,7 @@ export class MainJSONRPC extends AbstractJSONRPC {
     if (target === MainJSONRPC.Main) {
       throw new Error(`[JSONRPC] can't send message to main itself`)
     }
+
     return typeof target === 'number'
       ? webContents.fromId(target)
       : target instanceof BrowserWindow
