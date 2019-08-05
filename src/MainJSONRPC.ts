@@ -1,12 +1,20 @@
 import { ipcMain, WebContents, BrowserWindow, webContents } from 'electron'
+
 import { AbstractJSONRPC } from './AbstractJSONRPC'
 import { RPC_RECEIVE_CHANNEL, RPC_SEND_CHANNEL } from './constants'
+import { isRenderer } from './utils'
 import {
   Sendable,
   JSONRPCRequest,
   JSONRPCResponse,
   JSONRPCTarget,
 } from './type'
+
+if (process.env.NODE_ENV === 'development') {
+  if (isRenderer()) {
+    throw new Error("don't import 'jsonrpc-electron/main' in renderer process")
+  }
+}
 
 /**
  * 主线程JSONRPC客户端

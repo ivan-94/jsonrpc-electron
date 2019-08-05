@@ -1,4 +1,5 @@
 import { ipcRenderer, remote } from 'electron'
+
 import { AbstractJSONRPC } from './AbstractJSONRPC'
 import { RPC_SEND_CHANNEL, MAIN_TARGET, RPC_RECEIVE_CHANNEL } from './constants'
 import {
@@ -7,6 +8,13 @@ import {
   Sendable,
   JSONRPCTarget,
 } from './type'
+import { isRenderer } from './utils'
+
+if (process.env.NODE_ENV === 'development') {
+  if (!isRenderer()) {
+    throw new Error("don't import 'jsonrpc-electron/renderer' in main process")
+  }
+}
 
 export const Main = MAIN_TARGET
 

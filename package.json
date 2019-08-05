@@ -1,9 +1,9 @@
 {
   "name": "@gdjiami/jsonrpc-electron",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "use jsonrpc to communicate main <-> renderer or renderer <-> renderer in electron",
   "main": "main.js",
-  "typings": "lib/index.d.ts",
+  "typings": "main.d.ts",
   "publishConfig": {
     "registry": "https://registry.npmjs.org",
     "access": "public"
