@@ -133,20 +133,28 @@ export abstract class AbstractJSONRPC {
    * @param target
    * @param method
    * @param params
+   * @param timeout 超时时间，默认是300000(30s)
    */
   public callHandler<R, T = {}>(
     target: JSONRPCTarget,
     method: string,
     params?: T,
+    timeout?: number,
   ): Promise<R> {
     return new Promise((res, rej) => {
-      this.send(target, method, params, (result, error) => {
-        if (error != null) {
-          rej(error)
-        } else {
-          res(result as R)
-        }
-      })
+      this.send(
+        target,
+        method,
+        params,
+        (result, error) => {
+          if (error != null) {
+            rej(error)
+          } else {
+            res(result as R)
+          }
+        },
+        timeout,
+      )
     })
   }
 
@@ -232,6 +240,7 @@ export abstract class AbstractJSONRPC {
     method: string,
     params?: T,
     callback?: ResponderCallback<R>,
+    timeout?: number,
   ) {
     const isEvent = callback == null
     const id = isEvent ? undefined : this.getId()
@@ -267,25 +276,30 @@ export abstract class AbstractJSONRPC {
       if (!isEvent) {
         // 需要监听renderer响应
         let resolved = false
+        let timer: NodeJS.Timeout | undefined
+        const _timeout = timeout || DEFAULT_TIMEOUT
+        const timeoutEnabled = _timeout > 0 && _timeout !== Infinity
 
         // 超时机制
-        const timer = setTimeout(() => {
-          if (resolved) {
-            return
-          }
+        if (timeoutEnabled) {
+          timer = setTimeout(() => {
+            if (resolved) {
+              return
+            }
 
-          resolved = true
-          callback!(
-            undefined,
-            new AbstractJSONRPC.Error(
-              JSONRPCErrorCode.Timeout,
-              `${method} 调用超时`,
-            ),
-          )
+            resolved = true
+            callback!(
+              undefined,
+              new AbstractJSONRPC.Error(
+                JSONRPCErrorCode.Timeout,
+                `${method} 调用超时`,
+              ),
+            )
 
-          // tslint:disable-next-line:no-dynamic-delete
-          delete this.responder[id!]
-        }, DEFAULT_TIMEOUT)
+            // tslint:disable-next-line:no-dynamic-delete
+            delete this.responder[id!]
+          }, _timeout)
+        }
 
         this.responder[id!] = {
           callback: (result, error) => {
@@ -293,7 +307,9 @@ export abstract class AbstractJSONRPC {
               return
             }
             resolved = true
-            clearTimeout(timer)
+            if (timer) {
+              clearTimeout(timer)
+            }
             callback!(result, error)
           },
         }
