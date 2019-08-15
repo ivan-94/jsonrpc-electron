@@ -68,6 +68,13 @@ export enum JSONRPCErrorCode {
 }
 
 export type ResponderCallback<T = any> = (result?: T, error?: Error) => void
+
+export interface Responder {
+  callback: ResponderCallback
+  name: string
+  args: any
+}
+
 export type HandlerCallback<T = any, R = any> = (
   params: T,
   source: number,

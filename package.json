@@ -1,6 +1,6 @@
 {
   "name": "@gdjiami/jsonrpc-electron",
-  "version": "0.2.1",
+  "version": "0.2.2",
   "description": "use jsonrpc to communicate main <-> renderer or renderer <-> renderer in electron",
   "main": "main.js",
   "typings": "main.d.ts",

@@ -15,13 +15,53 @@ import {
   JSONRPCResponseError,
   JSONRPCResponseSuccess,
   JSONRPCTarget,
+  Responder,
 } from './type'
 import { BoundJSONRPC } from './BoundJSONRPC'
 
+/**
+ * 错误对象
+ */
 export class JSONRPCError implements Error {
   public stack = new Error().stack
   public name = 'JSONRPCError'
+  public methodName?: string
+  public args?: any
+
+  // 从JSONRPC 响应中恢复
+  public static recoverFromResponse(
+    res: JSONRPCResponseError,
+    responder: Responder,
+  ) {
+    const errorMessage = `[${responder.name}(${JSON.stringify(
+      responder.args,
+    )})]: ${res.error.message || ''}`
+    const err = new JSONRPCError(
+      res.error.code,
+      errorMessage,
+      res.error.data && res.error.data.data,
+    )
+    if (res.error.data && res.error.data.stack) {
+      err.stack = res.error.data.stack
+    }
+    err.methodName = responder.name
+    err.args = responder.args
+    return err
+  }
+
   constructor(public code: number, public message: string, public data?: any) {}
+
+  public toJSON() {
+    return {
+      name: 'JSONRPCError',
+      code: this.code,
+      message: this.message,
+      methodName: this.methodName,
+      args: this.args,
+      data: this.data,
+      stack: this.stack,
+    }
+  }
 }
 
 /**
@@ -43,9 +83,7 @@ export abstract class AbstractJSONRPC {
    * 用于接收对端的回调
    */
   protected responder: {
-    [id: string]: {
-      callback: ResponderCallback
-    }
+    [id: string]: Responder
   } = {}
 
   /**
@@ -312,6 +350,8 @@ export abstract class AbstractJSONRPC {
             }
             callback!(result, error)
           },
+          name: method,
+          args: params,
         }
       }
 
@@ -374,11 +414,7 @@ export abstract class AbstractJSONRPC {
       // 调用异常
       responder.callback(
         undefined,
-        new AbstractJSONRPC.Error(
-          res.error.code,
-          res.error.message,
-          res.error.data,
-        ),
+        AbstractJSONRPC.Error.recoverFromResponse(res, responder),
       )
     } else {
       responder.callback(res.result)
@@ -459,7 +495,11 @@ export abstract class AbstractJSONRPC {
               jsonrpc: '2.0',
               error:
                 err instanceof AbstractJSONRPC.Error
-                  ? { code: err.code, message: err.message, data: err.data }
+                  ? {
+                      code: err.code,
+                      message: err.message,
+                      data: { data: err.data, stack: err.stack },
+                    }
                   : {
                       code: JSONRPCErrorCode.UnKnown,
                       message: err.message || err,
