@@ -28,6 +28,29 @@ export class RendererJSONRPC extends AbstractJSONRPC {
     return (this.instance = new this())
   }
 
+  /**
+   * 发送事件给主进程
+   * @param method
+   * @param params
+   */
+  public emitMain<T>(method: string, params?: T) {
+    this.emit(RendererJSONRPC.Main, method, params)
+  }
+
+  /**
+   * 调用主进程的方法
+   * @param method
+   * @param params
+   * @param timeout
+   */
+  public callMainHandler<R, T = {}>(
+    method: string,
+    params?: T,
+    timeout?: number,
+  ) {
+    return this.callHandler(RendererJSONRPC.Main, method, params, timeout)
+  }
+
   private constructor() {
     super()
     this.setup()

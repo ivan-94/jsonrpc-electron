@@ -3,6 +3,7 @@ import { JSONRPCTarget, EventCallback, HandlerCallback } from './type'
 
 /**
  * 绑定Target的JSONRPC
+ * @deprecated 使用场景非常少
  */
 export class BoundJSONRPC {
   public constructor(

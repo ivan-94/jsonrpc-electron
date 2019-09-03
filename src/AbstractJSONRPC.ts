@@ -109,6 +109,7 @@ export abstract class AbstractJSONRPC {
   /**
    * 绑定target
    * @param target
+   * @deprecated 使用场景非常少
    */
   public bind(target: JSONRPCTarget) {
     return new BoundJSONRPC(this, target)
