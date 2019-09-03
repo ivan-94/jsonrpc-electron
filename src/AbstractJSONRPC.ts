@@ -359,7 +359,7 @@ export abstract class AbstractJSONRPC {
       return true
     }
 
-    return sender(this.getSendable(target))
+    return sender(this.getSender(target))
   }
 
   /**
@@ -376,8 +376,8 @@ export abstract class AbstractJSONRPC {
       return false
     }
 
-    const sendableA = this.getSendable(a!)
-    const sendableB = this.getSendable(b!)
+    const sendableA = this.getSender(a!)
+    const sendableB = this.getSender(b!)
 
     if (sendableA && sendableB && sendableA.id === sendableB.id) {
       return true
@@ -393,9 +393,7 @@ export abstract class AbstractJSONRPC {
    */
   protected isSenderMatchTarget(a: Sendable, target?: JSONRPCTarget) {
     let t: Sendable | undefined
-    return target == null
-      ? true
-      : (t = this.getSendable(target)) && t.id === a.id
+    return target == null ? true : (t = this.getSender(target)) && t.id === a.id
   }
 
   /**
@@ -503,11 +501,25 @@ export abstract class AbstractJSONRPC {
                   : {
                       code: JSONRPCErrorCode.UnKnown,
                       message: err.message || err,
+                      data: { stack: err.stack },
                     },
             }
             sender.send(RPC_RECEIVE_CHANNEL, res)
           })
       }
+    }
+  }
+
+  private getSender(target: JSONRPCTarget) {
+    if (process.env.NODE_ENV === 'development' && this.getSendable == null) {
+      throw new Error('[JSONRPC] getSendable is not defined')
+    }
+
+    try {
+      return this.getSendable(target)
+    } catch (err) {
+      console.warn('[JSONRPC] failed to getSendable', err)
+      return undefined
     }
   }
 

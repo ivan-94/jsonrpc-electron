@@ -40,9 +40,9 @@ export class MainJSONRPC extends AbstractJSONRPC {
    * @param params
    */
   public broadcast<T>(method: string, params?: T) {
-    BrowserWindow.getAllWindows()
-      .map(i => i.webContents)
-      .forEach(i => this.send(i, method, params))
+    BrowserWindow.getAllWindows().forEach(i =>
+      this.send(i.webContents, method, params),
+    )
   }
 
   protected getSendable(target: JSONRPCTarget): Sendable {
