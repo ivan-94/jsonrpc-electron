@@ -1,7 +1,11 @@
 import { ipcMain, WebContents, BrowserWindow, webContents } from 'electron'
 
 import { AbstractJSONRPC } from './AbstractJSONRPC'
-import { RPC_RECEIVE_CHANNEL, RPC_SEND_CHANNEL } from './constants'
+import {
+  RPC_RECEIVE_CHANNEL,
+  RPC_SEND_CHANNEL,
+  BROADCAST_METHOD,
+} from './constants'
 import { isRenderer } from './utils'
 import {
   Sendable,
@@ -45,6 +49,7 @@ export class MainJSONRPC extends AbstractJSONRPC {
     )
   }
 
+  // TODO: 批量发送机制
   protected getSendable(target: JSONRPCTarget): Sendable {
     if (target === MainJSONRPC.Main) {
       throw new Error(`[JSONRPC] can't send message to main itself`)
@@ -73,5 +78,10 @@ export class MainJSONRPC extends AbstractJSONRPC {
         this.handleRPCResponse(arg)
       },
     )
+
+    // 内置事件
+    this.on(BROADCAST_METHOD, (params: { method: string; params: any }) => {
+      this.broadcast(params.method, params.params)
+    })
   }
 }

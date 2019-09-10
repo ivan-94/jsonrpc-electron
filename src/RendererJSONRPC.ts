@@ -1,7 +1,12 @@
 import { ipcRenderer, remote } from 'electron'
 
 import { AbstractJSONRPC } from './AbstractJSONRPC'
-import { RPC_SEND_CHANNEL, MAIN_TARGET, RPC_RECEIVE_CHANNEL } from './constants'
+import {
+  RPC_SEND_CHANNEL,
+  MAIN_TARGET,
+  RPC_RECEIVE_CHANNEL,
+  BROADCAST_METHOD,
+} from './constants'
 import {
   JSONRPCRequest,
   JSONRPCResponse,
@@ -35,6 +40,15 @@ export class RendererJSONRPC extends AbstractJSONRPC {
    */
   public emitMain<T>(method: string, params?: T) {
     this.emit(RendererJSONRPC.Main, method, params)
+  }
+
+  /**
+   * 通过主进程进行广播
+   * @param method
+   * @param params
+   */
+  public broadcast<T>(method: string, params?: T) {
+    this.emitMain(BROADCAST_METHOD, { method, params })
   }
 
   /**
