@@ -288,7 +288,7 @@ export abstract class AbstractJSONRPC {
       jsonrpc: '2.0',
       method,
       id,
-      params: params || {},
+      params: params,
     }
 
     const sender = (sendable: Sendable | undefined) => {
