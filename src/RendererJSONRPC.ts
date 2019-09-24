@@ -62,7 +62,7 @@ export class RendererJSONRPC extends AbstractJSONRPC {
     params?: T,
     timeout?: number,
   ) {
-    return this.callHandler(RendererJSONRPC.Main, method, params, timeout)
+    return this.callHandler<R, T>(RendererJSONRPC.Main, method, params, timeout)
   }
 
   private constructor() {
