@@ -1,6 +1,6 @@
 {
   "name": "@gdjiami/jsonrpc-electron",
-  "version": "0.2.8",
+  "version": "0.3.0",
   "description": "use jsonrpc to communicate main <-> renderer or renderer <-> renderer in electron",
   "main": "main.js",
   "typings": "main.d.ts",
@@ -49,7 +49,7 @@
     "@babel/preset-typescript": "^7.3.3",
     "@types/jest": "^24.0.11",
     "babel-jest": "^24.5.0",
-    "electron": "^4.1.1",
+    "electron": "5.*",
     "husky": "^1.2.1",
     "jest": "^24.5.0",
     "prettier": "^1.15.3",

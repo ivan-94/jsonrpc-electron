@@ -12,12 +12,14 @@ import {
   Sendable,
   JSONRPCResponse,
   JSONRPCRequest,
+  JSONRPCEvent,
   JSONRPCResponseError,
   JSONRPCResponseSuccess,
   JSONRPCTarget,
   Responder,
 } from './type'
 import { BoundJSONRPC } from './BoundJSONRPC'
+import { isEvent } from './utils'
 
 /**
  * 错误对象
@@ -78,6 +80,8 @@ export abstract class AbstractJSONRPC {
   public static Error = JSONRPCError
 
   private uid = 0
+  private queueTick = 0
+  private scheduleQueue: { [id: number]: Array<[string, Sendable, any]> } = {}
 
   /**
    * 用于接收对端的回调
@@ -165,6 +169,30 @@ export abstract class AbstractJSONRPC {
       }
     }
     return false
+  }
+
+  /**
+   * 移除所有事件监听器
+   */
+  public removeAllListener(target?: JSONRPCTarget) {
+    if (target == null) {
+      this.listeners = {}
+      return
+    }
+
+    for (const method in this.listeners) {
+      const list = []
+      for (const l of this.listeners[method]) {
+        if (this.isTargetEqual(target, l.target)) {
+          continue
+        }
+        list.push(l)
+      }
+
+      if (this.listeners[method].length !== list.length) {
+        this.listeners[method] = list
+      }
+    }
   }
 
   /**
@@ -284,7 +312,7 @@ export abstract class AbstractJSONRPC {
     const isEvent = callback == null
     const id = isEvent ? undefined : this.getId()
 
-    const payload = {
+    const payload: JSONRPCRequest | JSONRPCEvent = {
       jsonrpc: '2.0',
       method,
       id,
@@ -356,7 +384,7 @@ export abstract class AbstractJSONRPC {
         }
       }
 
-      sendable.send(RPC_SEND_CHANNEL, payload)
+      this.scheduleSend(RPC_SEND_CHANNEL, sendable, payload)
       return true
     }
 
@@ -452,7 +480,15 @@ export abstract class AbstractJSONRPC {
    * @param sender
    * @param req
    */
-  protected handleRPCRequest(sender: Sendable, req: JSONRPCRequest<any>) {
+  protected handleRPCRequest(
+    sender: Sendable,
+    req: JSONRPCRequest | JSONRPCRequest[],
+  ) {
+    if (Array.isArray(req)) {
+      req.forEach(r => this.handleRPCRequest(sender, r))
+      return
+    }
+
     const { params, id, method } = req
     const isEvent = id == null
     if (isEvent) {
@@ -507,6 +543,47 @@ export abstract class AbstractJSONRPC {
             }
             sender.send(RPC_RECEIVE_CHANNEL, res)
           })
+      }
+    }
+  }
+
+  /**
+   * 调度 IPC 发送
+   */
+  private scheduleSend(
+    channel: string,
+    sendable: Sendable,
+    payload: JSONRPCRequest | JSONRPCEvent,
+  ) {
+    if (isEvent(payload)) {
+      // 调度, 合并一些事件，减少 IPC 通信次数
+      const id = sendable.id
+      this.scheduleQueue[id] = this.scheduleQueue[id] || []
+      this.scheduleQueue[id].push(arguments as any)
+
+      if (this.queueTick++ === 0) {
+        setTimeout(this.flushQueue)
+      }
+    } else {
+      // 方法调用, 我们希望能够尽快被执行
+      sendable.send(channel, payload)
+    }
+  }
+
+  private flushQueue = () => {
+    this.queueTick = 0
+    const queue = this.scheduleQueue
+    this.scheduleQueue = {}
+
+    for (const id in queue) {
+      // 批量发送
+      if (queue[id].length > 1) {
+        const payload = queue[id].map(i => i[2])
+        const [channel, sendable] = queue[id][0]
+        sendable.send(channel, payload)
+      } else {
+        const [channel, sendable, payload] = queue[id][0]
+        sendable.send(channel, payload)
       }
     }
   }

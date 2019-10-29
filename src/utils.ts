@@ -1,4 +1,4 @@
-import { Sendable } from './type'
+import { Sendable, JSONRPCRequest, JSONRPCEvent } from './type'
 
 /**
  * 判断是否是渲染进程
@@ -20,4 +20,8 @@ export function isRenderer() {
 
 export function isSendable(t: any): t is Sendable {
   return t && 'send' in t
+}
+
+export function isEvent(p: JSONRPCRequest | JSONRPCEvent): p is JSONRPCEvent {
+  return p && p['id'] == null
 }

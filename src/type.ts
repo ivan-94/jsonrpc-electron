@@ -10,7 +10,7 @@ export interface Sendable {
 /**
  * JSONRPC事件请求
  */
-export interface JSONRPCRequest<T> {
+export interface JSONRPCRequest<T = any> {
   jsonrpc: '2.0'
   method: string
   id: string | number
@@ -20,7 +20,7 @@ export interface JSONRPCRequest<T> {
 /**
  * JSONRPC 事件
  */
-export interface JSONRPCEvent<T> {
+export interface JSONRPCEvent<T = any> {
   jsonrpc: '2.0'
   method: string
   params?: T
@@ -29,7 +29,7 @@ export interface JSONRPCEvent<T> {
 /**
  * JSONRPC 成功响应
  */
-export interface JSONRPCResponseSuccess<T> {
+export interface JSONRPCResponseSuccess<T = any> {
   jsonrpc: '2.0'
   id: string | number
   result: T
