@@ -13,7 +13,7 @@ import {
   Sendable,
   JSONRPCTarget,
 } from './type'
-import { isRenderer } from './utils'
+import { isRenderer, isSendable } from './utils'
 
 if (process.env.NODE_ENV === 'development') {
   if (!isRenderer()) {
@@ -22,6 +22,8 @@ if (process.env.NODE_ENV === 'development') {
 }
 
 export const Main = MAIN_TARGET
+
+const MAIN_SENDABLE = { send: ipcRenderer.send.bind(ipcRenderer), id: Main }
 
 export class RendererJSONRPC extends AbstractJSONRPC {
   public static instance: RendererJSONRPC
@@ -32,6 +34,11 @@ export class RendererJSONRPC extends AbstractJSONRPC {
     }
     return (this.instance = new this())
   }
+
+  /**
+   * 缓存发送者
+   */
+  private senders: Map<any, Sendable> = new Map()
 
   /**
    * 发送事件给主进程
@@ -71,17 +78,42 @@ export class RendererJSONRPC extends AbstractJSONRPC {
   }
 
   protected getSendable(target: JSONRPCTarget): Sendable {
-    if (target == RendererJSONRPC.Main) {
-      return { send: ipcRenderer.send.bind(ipcRenderer), id: target }
+    if (target == Main) {
+      return MAIN_SENDABLE
     }
+
+    if (this.senders.has(target)) {
+      this.senders.get(target)!
+    }
+
+    let s: Sendable | undefined
 
     if (typeof target === 'number') {
-      return remote.webContents.fromId(target)
+      // 这里调用 remote 会触发同步请求
+      s = this.generateSendable(target)
     } else if (target instanceof remote.BrowserWindow) {
-      return target.webContents
+      s = this.generateSendable(target.webContents.id)
     }
 
-    return target
+    if (s) {
+      this.senders.set(target, s)
+      return s
+    }
+
+    if (isSendable(target)) {
+      return target
+    }
+
+    throw new Error(`[JSONPRC] 未知target 类型`)
+  }
+
+  private generateSendable(id: number): Sendable {
+    const s = {
+      id,
+      send: ipcRenderer.sendTo.bind(ipcRenderer, id),
+    }
+
+    return s
   }
 
   private setup() {
@@ -90,20 +122,7 @@ export class RendererJSONRPC extends AbstractJSONRPC {
     ipcRenderer.on(
       RPC_SEND_CHANNEL,
       (event: { senderId: number }, arg: JSONRPCRequest<any>) => {
-        const id = event.senderId
-        this.handleRPCRequest(
-          {
-            id,
-            send: (channel: string, args: any[]) => {
-              if (id === MAIN_TARGET) {
-                ipcRenderer.send(channel, ...args)
-              } else {
-                ipcRenderer.sendTo(id, channel, ...args)
-              }
-            },
-          },
-          arg,
-        )
+        this.handleRPCRequest(this.getSendable(event.senderId), arg)
       },
     )
 

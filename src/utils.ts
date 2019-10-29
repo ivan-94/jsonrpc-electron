@@ -1,3 +1,5 @@
+import { Sendable } from './type'
+
 /**
  * 判断是否是渲染进程
  */
@@ -14,4 +16,8 @@ export function isRenderer() {
 
   // @ts-ignore
   return process.type === 'renderer'
+}
+
+export function isSendable(t: any): t is Sendable {
+  return t && 'send' in t
 }

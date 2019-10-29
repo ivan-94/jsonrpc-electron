@@ -1,6 +1,7 @@
 import { WebContents, BrowserWindow } from 'electron'
 
-export type JSONRPCTarget = number | WebContents | BrowserWindow
+export type JSONRPCTarget = number | WebContents | BrowserWindow | Sendable
+
 export interface Sendable {
   id: number
   send(channel: string, ...args: any[]): void
