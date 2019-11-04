@@ -384,7 +384,7 @@ export abstract class AbstractJSONRPC {
         }
       }
 
-      this.scheduleSend(RPC_SEND_CHANNEL, sendable, payload)
+      this.scheduleRequest(RPC_SEND_CHANNEL, sendable, payload)
       return true
     }
 
@@ -425,32 +425,6 @@ export abstract class AbstractJSONRPC {
     return target == null ? true : (t = this.getSender(target)) && t.id === a.id
   }
 
-  /**
-   * 处理JSONRPC回调响应
-   * @param res
-   */
-  protected handleRPCResponse(res: JSONRPCResponse<any>) {
-    const { id } = res
-    const responder = this.responder[id]
-    if (responder == null) {
-      console.warn(`[JSONRPC] responder for ${id} not found`)
-      return
-    }
-
-    if ('error' in res) {
-      // 调用异常
-      responder.callback(
-        undefined,
-        AbstractJSONRPC.Error.recoverFromResponse(res, responder),
-      )
-    } else {
-      responder.callback(res.result)
-    }
-
-    // tslint:disable-next-line:no-dynamic-delete
-    delete this.responder[id]
-  }
-
   protected getHandlerFor(method: string, sender: Sendable) {
     if (this.handlers[method] == null) {
       return undefined
@@ -475,12 +449,46 @@ export abstract class AbstractJSONRPC {
     return handler
   }
 
+  protected handleResponse(res: any) {
+    this.handleRPCResponse(this.beforeReceive(res))
+  }
+
+  protected handleRequest(sender: Sendable, res: any) {
+    this.handleRPCRequest(sender, this.beforeReceive(res))
+  }
+
+  /**
+   * 处理JSONRPC回调响应
+   * @param res
+   */
+  private handleRPCResponse(res: JSONRPCResponse<any>) {
+    const { id } = res
+    const responder = this.responder[id]
+    if (responder == null) {
+      console.warn(`[JSONRPC] responder for ${id} not found`)
+      return
+    }
+
+    if ('error' in res) {
+      // 调用异常
+      responder.callback(
+        undefined,
+        AbstractJSONRPC.Error.recoverFromResponse(res, responder),
+      )
+    } else {
+      responder.callback(res.result)
+    }
+
+    // tslint:disable-next-line:no-dynamic-delete
+    delete this.responder[id]
+  }
+
   /**
    * 处理JSONRPC响应
    * @param sender
    * @param req
    */
-  protected handleRPCRequest(
+  private handleRPCRequest(
     sender: Sendable,
     req: JSONRPCRequest | JSONRPCRequest[],
   ) {
@@ -512,7 +520,7 @@ export abstract class AbstractJSONRPC {
             message: `method ${method} not found`,
           },
         }
-        sender.send(RPC_RECEIVE_CHANNEL, res)
+        this.beforeSend(sender, RPC_RECEIVE_CHANNEL, res)
       } else {
         handler
           .callback(params, sender.id)
@@ -522,7 +530,8 @@ export abstract class AbstractJSONRPC {
               jsonrpc: '2.0',
               result,
             }
-            sender.send(RPC_RECEIVE_CHANNEL, res)
+
+            this.beforeSend(sender, RPC_RECEIVE_CHANNEL, res)
           })
           .catch(err => {
             const res: JSONRPCResponseError = {
@@ -541,7 +550,7 @@ export abstract class AbstractJSONRPC {
                       data: { stack: err.stack },
                     },
             }
-            sender.send(RPC_RECEIVE_CHANNEL, res)
+            this.beforeSend(sender, RPC_RECEIVE_CHANNEL, res)
           })
       }
     }
@@ -550,7 +559,7 @@ export abstract class AbstractJSONRPC {
   /**
    * 调度 IPC 发送
    */
-  private scheduleSend(
+  private scheduleRequest(
     channel: string,
     sendable: Sendable,
     payload: JSONRPCRequest | JSONRPCEvent,
@@ -566,7 +575,19 @@ export abstract class AbstractJSONRPC {
       }
     } else {
       // 方法调用, 我们希望能够尽快被执行
-      sendable.send(channel, payload)
+      this.beforeSend(sendable, channel, payload)
+    }
+  }
+
+  private beforeReceive(payload: any) {
+    return JSON.parse(payload)
+  }
+
+  private beforeSend(sender: Sendable, channel: string, payload: any) {
+    try {
+      sender.send(channel, JSON.stringify(payload))
+    } catch (err) {
+      console.error('[JSONRPC] failed to serialize payload', err)
     }
   }
 
@@ -580,10 +601,10 @@ export abstract class AbstractJSONRPC {
       if (queue[id].length > 1) {
         const payload = queue[id].map(i => i[2])
         const [channel, sendable] = queue[id][0]
-        sendable.send(channel, payload)
+        this.beforeSend(sendable, channel, payload)
       } else {
         const [channel, sendable, payload] = queue[id][0]
-        sendable.send(channel, payload)
+        this.beforeSend(sendable, channel, payload)
       }
     }
   }

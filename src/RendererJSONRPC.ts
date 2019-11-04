@@ -7,12 +7,7 @@ import {
   RPC_RECEIVE_CHANNEL,
   BROADCAST_METHOD,
 } from './constants'
-import {
-  JSONRPCRequest,
-  JSONRPCResponse,
-  Sendable,
-  JSONRPCTarget,
-} from './type'
+import { Sendable, JSONRPCTarget } from './type'
 import { isRenderer, isSendable } from './utils'
 
 if (process.env.NODE_ENV === 'development') {
@@ -121,16 +116,16 @@ export class RendererJSONRPC extends AbstractJSONRPC {
     // senderId 为0时为主进程
     ipcRenderer.on(
       RPC_SEND_CHANNEL,
-      (event: { senderId: number }, arg: JSONRPCRequest<any>) => {
-        this.handleRPCRequest(this.getSendable(event.senderId), arg)
+      (event: { senderId: number }, arg: any) => {
+        this.handleRequest(this.getSendable(event.senderId), arg)
       },
     )
 
     // 处理JSONRPC响应
     ipcRenderer.on(
       RPC_RECEIVE_CHANNEL,
-      (event: { senderId: number }, arg: JSONRPCResponse<any>) => {
-        this.handleRPCResponse(arg)
+      (event: { senderId: number }, arg: any) => {
+        this.handleResponse(arg)
       },
     )
   }

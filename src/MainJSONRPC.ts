@@ -7,12 +7,7 @@ import {
   BROADCAST_METHOD,
 } from './constants'
 import { isRenderer } from './utils'
-import {
-  Sendable,
-  JSONRPCRequest,
-  JSONRPCResponse,
-  JSONRPCTarget,
-} from './type'
+import { Sendable, JSONRPCTarget } from './type'
 
 if (process.env.NODE_ENV === 'development') {
   if (isRenderer()) {
@@ -64,18 +59,15 @@ export class MainJSONRPC extends AbstractJSONRPC {
 
   private setup() {
     // 监听jsonrpc请求
-    ipcMain.on(
-      RPC_SEND_CHANNEL,
-      (event: { sender: WebContents }, arg: JSONRPCRequest<any>) => {
-        this.handleRPCRequest(event.sender, arg)
-      },
-    )
+    ipcMain.on(RPC_SEND_CHANNEL, (event: { sender: WebContents }, arg: any) => {
+      this.handleRequest(event.sender, arg)
+    })
 
     // 监听jsonrpc响应
     ipcMain.on(
       RPC_RECEIVE_CHANNEL,
-      (event: { sender: WebContents }, arg: JSONRPCResponse<any>) => {
-        this.handleRPCResponse(arg)
+      (event: { sender: WebContents }, arg: any) => {
+        this.handleResponse(arg)
       },
     )
 
